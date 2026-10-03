@@ -6,6 +6,9 @@ local _, ns = ...
 local TM = ns.TM
 
 TM.NEWS = {
+    { version = "1.15.0", date = "2026-10-03", items = {
+        "Experimental option: taunt a loose mob from nameplates when the clicked player has no enemy targeted.",
+    } },
     { version = "1.14.0", date = "2026-10-03", items = {
         "The header above the bars shows the logo. ToppedOff Forever and Outfitter Forever now share this look.",
     } },

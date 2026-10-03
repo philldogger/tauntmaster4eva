@@ -612,12 +612,15 @@ local function BuildTauntsTab(p)
     AddRefresher(function() msg:SetText(TM.db.announceText or "") end)
     MutedNote(ann, "{target} = the mob, {player} = the player you saved. Sent only when the taunt casts.", 120, -84, PAGE_W - 132)
 
-    local more = Card(p, "More ways to taunt", 0, -238, PAGE_W, 130)
+    local more = Card(p, "More ways to taunt", 0, -238, PAGE_W, 176)
     Switch(more, "Show your target's target bar", 12, -30, "showToT")
     MutedNote(more, "Shows who your target is hitting. Click it to taunt your own target.", 50, -52)
     Switch(more, "Backup taunt when they have no enemy targeted", 12, -76, "tauntFallback")
     MutedNote(more, "If they're targeting a friend (like a healer targeting who they heal), "
         .. "taunts what that friend is fighting instead. Not always the mob that's on them.", 50, -98, PAGE_W - 62)
+    Switch(more, "Taunt a loose mob from nameplates (experimental)", 12, -130, "looseMobTaunt")
+    MutedNote(more, "Taunts a mob that's on a party member (not you). Party only. Needs nameplates.",
+        50, -152, PAGE_W - 62)
 end
 
 local function BuildLayoutTab(p)

@@ -158,6 +158,40 @@ function UnitIsUnit(a, b)
     end
     return a == b
 end
+-- True when that nameplate's mob is attacking another party member (or their pet).
+-- Like the game: never true for you ("player") or your pet.
+function UnitPlayerOrPetInParty(u)
+    local mob = type(u) == "string" and u:match("^(nameplate%d+)target$")
+    local t = mob and MOB_TARGET[mob]
+    return maybeSecret(type(t) == "string" and t:match("^party") ~= nil)
+end
+-- Secure snippets: SecureHandlerWrapScript records the body; tests run it with
+-- runSnippet (below), in an environment holding only the restricted API it uses.
+function SecureHandlerWrapScript(frame, script, header, body)
+    frame.__wraps = frame.__wraps or {}
+    frame.__wraps[script] = body
+end
+function runSnippet(frame, script, button)
+    local body = frame.__wraps and frame.__wraps[script]
+    if not body then return end
+    -- Snippets may change their own attributes in combat; this handle skips the combat check
+    local handle = {
+        GetAttribute = function(_, k) return frame.__attrs[k] end,
+        SetAttribute = function(_, k, v) frame.__attrs[k] = v end,
+    }
+    local env = {
+        SecureCmdOptionParse = function(opts) if opts:find("group:raid") and STATE.inRaid then return "raid" end return nil end,
+        PlayerCanAttack = function(u) return HOSTILE[u] ~= false end,
+        UnitExists = function(u) return STATE.unitsExist[u] and true or false end,
+        UnitIsDead = function(u) return DEAD_UNITS[u] == true end,
+        UnitPlayerOrPetInParty = function(u) return UnitPlayerOrPetInParty(u) == true end,
+        gmatch = string.gmatch,
+    }
+    local fn = assert(loadstring("local self, button, down = ...\n" .. body))
+    setfenv(fn, env)
+    return fn(handle, button or "LeftButton", false)
+end
+DEAD_UNITS = {}
 PLATES = {}
 C_NamePlate = { GetNamePlateForUnit = function(u)
     PLATES[u] = PLATES[u] or newObj("Frame", nil, UIParent)
