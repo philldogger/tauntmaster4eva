@@ -38,6 +38,7 @@ local loginMsg
 for _, l in ipairs(LOG) do if l:find("loaded%.") then loginMsg = l end end
 assert(loginMsg and loginMsg:find("Growl") and loginMsg:find("Left Click") and loginMsg:find("Challenging Roar"), "login message: " .. tostring(loginMsg))
 
+for _, b in ipairs(TM.buttons) do assertEq(b.__wraps, nil, "loose-mob taunt off: bar clicks aren't wrapped") end
 assertEq(TM.db.aggroSound, false, "aggro sound off by default")
 TM.db.aggroSound = true
 step("macros")
@@ -785,6 +786,81 @@ assertEq(CHAT[1], "PARTY:Name_party1targettarget has been taunted off of Name_pa
 HOSTILE.party1target = nil; TM.db.announceChannel = "none"
 TM.db.tauntFallback = false; TM:ApplySettings()
 assertEq(TM.unitToButton.party1.__attrs.macrotext1, "/cast [@party1target,harm,nodead] Growl", "backup off again")
+
+step("loose-mob taunt (experimental)")
+STATE.class = "DRUID"; TM.db.bindings.DRUID = TM:DefaultBindings()
+STATE.inGroup, STATE.inRaid, STATE.party = true, false, 2
+STATE.unitsExist = { player = true, party1 = true, party2 = true }
+local lp = TM.unitToButton.party1
+local GROWL = "/cast [@party1target,harm,nodead] Growl"
+assertEq(TM.db.looseMobTaunt, false, "off by default")
+TM:ApplySettings()
+assertEq(lp.__attrs["tm-loose"], nil, "off: no snippet data")
+TM.db.looseMobTaunt = true; TM:ApplySettings()
+assertEq(lp.__attrs["tm-loose"], "macrotext1,*macrotext-tmleft", "on: the Growl click and keybinding, not Roar (AoE)")
+assert(lp.__wraps and lp.__wraps.OnClick, "on: bar clicks wrapped")
+assert(TauntMasterForever_ally.__wraps and TauntMasterForever_ally.__wraps.OnClick, "on: targeted ally keybinding wrapped")
+assertEq(TM.totButton.__wraps, nil, "target's target bar left alone")
+assertEq(lp.__attrs.macrotext1, GROWL, "normal macro until a click")
+-- In a fight: the healer (party1) targets the tank; nameplate3 is on you, nameplate5 on the healer
+COMBAT = true; BLOCKED = {}
+HOSTILE.party1target = false
+STATE.unitsExist.nameplate3, STATE.unitsExist.nameplate5 = true, true
+MOB_TARGET = { nameplate3 = "player", nameplate5 = "party1" }
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL .. "; [@nameplate5,harm,nodead] Growl", "taunts the mob that isn't on you")
+assertEq(lp.__attrs["*macrotext-tmleft"], GROWL .. "; [@nameplate5,harm,nodead] Growl", "keybinding too")
+assertEq(lp.__attrs.macrotext2, "/cast Challenging Roar", "Right Click unchanged")
+assertEq(#BLOCKED, 0, "nothing blocked in combat")
+-- Announcement names the loose mob
+TM.db.announceChannel = "PARTY"; CHAT = {}; FAKE_TIME = FAKE_TIME + 3
+lp.__scripts.PreClick(lp, "LeftButton"); fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 6795)
+assertEq(CHAT[1], "PARTY:Name_nameplate5 has been taunted off of Name_party1!", "announces the loose mob")
+TM.db.announceChannel = "none"
+-- Every mob on you: plain macro again
+MOB_TARGET = { nameplate3 = "player", nameplate5 = "player" }
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL, "mobs on you are skipped")
+-- A dead mob is skipped; the next one is taken
+MOB_TARGET = { nameplate3 = "party2", nameplate5 = "party1" }; DEAD_UNITS = { nameplate3 = true }
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL .. "; [@nameplate5,harm,nodead] Growl", "dead mob skipped")
+DEAD_UNITS = {}
+-- Two loose mobs: the first nameplate wins, whoever it's on
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL .. "; [@nameplate3,harm,nodead] Growl", "first loose mob")
+-- They have an enemy targeted: their own target, no extra clause
+HOSTILE.party1target = nil
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL, "own enemy target used as normal")
+HOSTILE.party1target = false
+-- Raids: off
+STATE.inRaid = true
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL, "nothing added in raids")
+STATE.inRaid = false
+COMBAT = false
+-- With the backup taunt on, the loose mob comes after it
+TM.db.tauntFallback = true; TM:ApplySettings()
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1,
+    GROWL .. "; [@party1targettarget,harm,nodead] Growl; [@nameplate3,harm,nodead] Growl", "after the backup taunt")
+TM.db.tauntFallback = false
+-- Turned off mid-fight: applied when combat ends; then the snippet does nothing
+COMBAT = true; BLOCKED = {}
+TM.db.looseMobTaunt = false; TM:ApplySettings()
+assertEq(#BLOCKED, 0, "turning it off in combat waits")
+COMBAT = false; fire("PLAYER_REGEN_ENABLED")
+assertEq(lp.__attrs["tm-loose"], nil, "off: snippet data cleared")
+runSnippet(lp, "OnClick")
+assertEq(lp.__attrs.macrotext1, GROWL, "off: normal macro")
+-- /tm debug lists what the game says about each nameplate
+SlashCmdList.TAUNTMASTERFOREVER("debug")
+local sawPlate = false
+for _, l in ipairs(LOG) do if l:find("nameplate5 target in party: true") then sawPlate = true end end
+assert(sawPlate, "debug lists nameplates")
+HOSTILE.party1target = nil; MOB_TARGET = {}
+STATE.unitsExist.nameplate3, STATE.unitsExist.nameplate5 = nil, nil
 
 step("nameplate marks")
 STATE.inGroup, STATE.inRaid, STATE.party = true, false, 2

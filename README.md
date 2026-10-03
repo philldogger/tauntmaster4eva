@@ -16,6 +16,7 @@ It's a from-scratch rebuild of the classic *TauntMaster* addon, written for Fore
 - **Bind anything.** Left, Right and Middle click, each with Shift, Ctrl and Alt, to a spell, macro, assist or target, with a picker of your class's taunts. Keys and controller buttons work too.
 - **Alerts.** A flashing bar and an optional sound when someone pulls aggro, taunt cooldown icons, and a low mana warning for you and your healers.
 - **Target's target bar and backup taunt.** Taunt what your target is hitting, or (optional) what a player's friendly target is fighting.
+- **Loose-mob taunt** (experimental, optional). Click a healer who has a friend targeted and taunt the mob that's on someone in your party, without targeting it.
 - **Taunt announcements** (optional) in party, raid, instance, say or yell chat, with your own message.
 - **Raids and looks.** Raid bars grouped by raid group; health %, role icons, sort by role, bar textures, text sizes, class colors, and a tank-stance-only mode.
 
@@ -56,7 +57,7 @@ Settings are grouped into tabs down the left side of the options window:
 
 | Tab | What's there |
 |---|---|
-| **Taunts** | Left and Right Click spell pickers, taunt announcements, target's target bar, backup taunt |
+| **Taunts** | Left and Right Click spell pickers, taunt announcements, target's target bar, backup taunt, loose-mob taunt |
 | **Click Bindings** | Every mouse button and modifier, with spell names or macros |
 | **Layout** | Bar size, columns, spacing, scale, lock, include yourself, show in raids, hide when solo, tank-stance-only mode, sort by role, reset position |
 | **Appearance** | Class colors, role icons, health %, bar texture, text sizes |
@@ -96,7 +97,8 @@ Bound keys appear beside each party bar, so you always know which button saves w
 WoW: Forever limits what addons can do in combat. TauntMaster Forever is built around those rules:
 
 - **It never acts on its own.** Every taunt is your click.
-- **A click taunts whatever that player has targeted.** Healers usually target a friend, so their bar shows a **red X** and there's nothing to taunt. Use the nameplate mark on the mob, the backup taunt, or your AoE taunt.
+- **A click taunts whatever that player has targeted.** Healers usually target a friend, so their bar shows a **red X** and there's nothing to taunt. Use the nameplate mark on the mob, the backup taunt, the loose-mob taunt, or your AoE taunt.
+- **The loose-mob taunt can't pick between loose mobs.** It skips mobs on you, but the game doesn't let addons tell party members apart during a fight. With one mob loose it taunts that one. With two or more it takes the first it finds, which may be on a DPS rather than the healer.
 - **Layout changes wait until combat ends.** Colors, text and alerts always update live.
 - **Say and Yell announcements** only work inside instances.
 - **Tank-stance-only mode** does nothing for Paladins, who have no tank stance.

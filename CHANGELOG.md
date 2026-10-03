@@ -1,3 +1,10 @@
+## 1.15.0
+
+- New **experimental** option on the Taunts tab: **Taunt a loose mob from nameplates** (off by default). When you click a player who has no enemy targeted, like a healer targeting you, the click taunts a mob that's attacking someone in your party other than you. You don't have to target it first.
+  - With one loose mob, that's the mob on them. With two or more, it takes the first one it finds, which may be on someone else. The game doesn't let addons tell party members apart during a fight.
+  - Party only. Needs enemy nameplates on (V key). A mob on a party member's pet counts too.
+  - Not yet tested in game. If clicks on the bars stop working, turn it off and please report it. `/tm debug` lists what the game shows the addon about each nameplate.
+
 ## 1.14.0
 
 One look for TauntMaster Forever, ToppedOff Forever and Outfitter Forever.

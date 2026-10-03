@@ -158,6 +158,7 @@ local DEFAULTS = {
     roleIcons = true,
     showToT = false,
     tauntFallback = false,   -- no enemy targeted: taunt what their target is fighting
+    looseMobTaunt = false,   -- no enemy targeted: taunt a mob (from nameplates) on a party member
     nameplateMarks = true,   -- mark mobs attacking a non-tank on their nameplates
     tankOnly = false,
     barTexture = "blizzard",
@@ -987,10 +988,34 @@ local function SafeName(unit)
     return name
 end
 
+-- The mob the loose-mob option would taunt: the first enemy nameplate whose
+-- target is in your party, not you (the game never counts you or your pet).
+-- Matches the click snippet below. nil if none, in a raid, or the game hides it.
+function TM:LooseMobUnit()
+    if IsInRaid() then return nil end
+    for i = 1, 40 do
+        local np = "nameplate" .. i
+        local exists = UnitExists(np)
+        if IsSecret(exists) then return nil end
+        if exists then
+            local hostile, dead = UnitCanAttack("player", np), UnitIsDeadOrGhost(np)
+            local inParty = UnitPlayerOrPetInParty and UnitPlayerOrPetInParty(np .. "target")
+            if IsSecret(hostile) or IsSecret(dead) or IsSecret(inParty) then return nil end
+            if hostile and not dead and inParty then return np end
+        end
+    end
+    return nil
+end
+
 -- Which unit the click taunts, and which friendly player it's saving
 local function ClickUnits(btn)
     if btn.isToT then return "target", "targettarget" end
-    return TM:EnemyUnitFor(btn), btn.unit   -- bars and the "targeted ally" button (unit "target")
+    local mob = TM:EnemyUnitFor(btn)   -- bars and the "targeted ally" button (unit "target")
+    if TM.db.looseMobTaunt then
+        local hostile = UnitCanAttack("player", mob)
+        if not IsSecret(hostile) and not hostile then mob = TM:LooseMobUnit() or mob end
+    end
+    return mob, btn.unit
 end
 
 -- Called just before a bar's click runs its spell
@@ -1096,15 +1121,83 @@ function TM:SetClickAttributes(btn, typeAttr, macroAttr, bind)
     end
 end
 
+---------------------------------------------------------------------------
+-- Loose-mob taunt (experimental, off by default). When the clicked player has no
+-- enemy targeted, the click taunts a mob from the nameplates that's attacking
+-- someone in your party other than you. Party only.
+--
+-- Addon code can't change a click in combat, so this runs as a secure snippet
+-- wrapped around the bar's OnClick. It may only use the game's restricted API:
+-- UnitPlayerOrPetInParty is false for you and your pet, so mobs already on you
+-- are skipped. It can't tell party members apart, so with two mobs loose it
+-- takes the first nameplate, not necessarily the one on the clicked player.
+--
+-- Attributes (set out of combat by ApplyBindingsToButton):
+--   tm-loose          comma list of the button's macro attributes that cast an
+--                     "enemy" spell; unset when the option is off
+--   tm-base-<attr>    that attribute's normal macro
+--   tm-spell-<attr>   its spell name
+-- Each click rewrites those macros: the normal one, plus a last clause for the
+-- loose mob when there is one.
+---------------------------------------------------------------------------
+TM.LOOSE_SNIPPET = [[
+    local list = self:GetAttribute("tm-loose")
+    if not list then return end
+    local mob
+    if not SecureCmdOptionParse("[group:raid] raid") and not PlayerCanAttack(self:GetAttribute("unit") .. "target") then
+        for i = 1, 40 do
+            local np = "nameplate" .. i
+            if UnitExists(np) and PlayerCanAttack(np) and not UnitIsDead(np)
+                and UnitPlayerOrPetInParty(np .. "target") then
+                mob = np
+                break
+            end
+        end
+    end
+    for attr in gmatch(list, "[^,]+") do
+        local macro = self:GetAttribute("tm-base-" .. attr)
+        if mob then
+            macro = macro .. "; [@" .. mob .. ",harm,nodead] " .. self:GetAttribute("tm-spell-" .. attr)
+        end
+        self:SetAttribute(attr, macro)
+    end
+]]
+
+-- Wraps the bar's clicks with the snippet, once, the first time the option is on
+-- (so with it off, clicks are exactly as before). Only called out of combat.
+function TM:WrapLooseClick(btn)
+    if btn.tmLooseWrapped or not SecureHandlerWrapScript then return end
+    if not self.secureHeader then
+        self.secureHeader = CreateFrame("Frame", "TauntMasterForeverSecureHeader", UIParent, "SecureHandlerBaseTemplate")
+    end
+    SecureHandlerWrapScript(btn, "OnClick", self.secureHeader, self.LOOSE_SNIPPET)
+    btn.tmLooseWrapped = true
+end
+
 function TM:ApplyBindingsToButton(btn, bindings)
+    local loose = (self.db.looseMobTaunt and not btn.isToT) and {} or nil
+    local function apply(typeAttr, macroAttr, bind)
+        self:SetClickAttributes(btn, typeAttr, macroAttr, bind)
+        if loose and bind and bind.kind == "enemy" and bind.text and bind.text ~= "" then
+            btn:SetAttribute("tm-base-" .. macroAttr, btn:GetAttribute(macroAttr))
+            btn:SetAttribute("tm-spell-" .. macroAttr, bind.text)
+            loose[#loose + 1] = macroAttr
+        end
+    end
     for _, click in ipairs(self.CLICKS) do
-        self:SetClickAttributes(btn, click.typeAttr, click.macroAttr, bindings[click.key])
+        apply(click.typeAttr, click.macroAttr, bindings[click.key])
     end
     -- Keybindings click with the made-up buttons "TMLeft"/"TMRight". The "*" prefix
     -- matches any modifier, so a controller button bound as e.g. SHIFT-PAD1 still
     -- casts the plain Left/Right Click spell instead of the Shift-click one.
-    self:SetClickAttributes(btn, "*type-tmleft", "*macrotext-tmleft", bindings["1"])
-    self:SetClickAttributes(btn, "*type-tmright", "*macrotext-tmright", bindings["2"])
+    apply("*type-tmleft", "*macrotext-tmleft", bindings["1"])
+    apply("*type-tmright", "*macrotext-tmright", bindings["2"])
+    if loose and #loose > 0 then
+        btn:SetAttribute("tm-loose", table.concat(loose, ","))
+        self:WrapLooseClick(btn)
+    else
+        btn:SetAttribute("tm-loose", nil)
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -1655,6 +1748,19 @@ SlashCmdList.TAUNTMASTERFOREVER = function(msg)
             show("    isOnGCD", cd.isOnGCD)
             show("    duration object API", C_Spell.GetSpellCooldownDuration ~= nil)
         end
+        -- Loose-mob taunt: what the game tells addons about each enemy nameplate's target
+        print("  Loose-mob taunt (" .. (TM.db.looseMobTaunt and "on" or "off") .. "):")
+        show("    click snippet API", SecureHandlerWrapScript ~= nil)
+        local plates = 0
+        for i = 1, 40 do
+            local np = "nameplate" .. i
+            local exists = UnitExists(np)
+            if IsSecret(exists) or exists then
+                plates = plates + 1
+                show("    " .. np .. " target in party", UnitPlayerOrPetInParty and UnitPlayerOrPetInParty(np .. "target"))
+            end
+        end
+        if plates == 0 then print("    no enemy nameplates (turn them on with V)") end
     elseif msg == "reset" then
         TM.db.point = { "CENTER", "CENTER", -300, 0 }
         TM:RunOutOfCombat("position", function() TM:RestorePosition() end)
